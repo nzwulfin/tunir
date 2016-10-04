@@ -235,6 +235,48 @@ def update_result(result, command, negative):
 
     return True
 
+def wait_net_service(server, port, timeout=None):
+    """ Wait for network service to appear
+        @param timeout: in seconds, if None or 0 wait forever
+        @return: True of False, if timeout is None may return only True or
+                 throw unhandled network exception
+    """
+    import socket
+    import errno
+    import sys
+
+    if timeout:
+        from time import time as now
+        # time module is needed to calc timeout shared between two exceptions
+        end = now() + timeout
+
+    while True:
+        try:
+            s = socket.socket()
+
+            if timeout:
+                next_timeout = end - now()
+                if next_timeout < 0:
+                    return False
+                else:
+            	    s.settimeout(next_timeout)
+
+            s.connect((server, port))
+
+        except socket.timeout, err:
+            # this exception occurs only if timeout is set
+            if timeout:
+                sys.exit('Timed out waiting for %s' % server)
+
+        except socket.error, err:
+            # catch timeout exception from underlying network library
+            # this one is different from socket.timeout
+            if type(err.args) != tuple:
+                if err[0] != errno.ETIMEDOUT or err[0] != errno.EHOSTUNREACH:
+                    raise
+        else:
+            s.close()
+            return True
 
 def run_job(jobpath, job_name='', extra_config={}, container=None,
             port=None, vms=[], ansible_path='' ):
@@ -288,6 +330,12 @@ def run_job(jobpath, job_name='', extra_config={}, container=None,
                 word = command.split(' ')[1]
                 print "Sleeping for %s." % word
                 time.sleep(int(word))
+                continue
+            elif command.startswith('WAIT'): #wait for ssh to respond
+                timeout = command.split(' ')[1]
+                print "waiting on ssh response for %s seconds." % timeout
+                #wait_net_service("192.168.121.91", 22, 15)
+                wait_net_service(config['host_string'], 22, timeout)
                 continue
             elif command.startswith('PLAYBOOK'):
                 playbook_name = command.split(' ')[1]
